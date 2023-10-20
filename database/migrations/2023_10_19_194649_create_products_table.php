@@ -10,13 +10,14 @@ class CreateProductsTable extends Migration
     {
         Schema::create('products', function (Blueprint $table) {
             $table->id();
-            $table->string('manufacturer')->nullable();
+            $table->unsignedBigInteger('manufacturer_id');
+            $table->foreign('manufacturer_id')->references('id')->on('manufacturers');
             $table->string('product_name')->nullable();
             $table->string('model_code');
             $table->text('product_description')->nullable();
-            $table->decimal('retail_price', 10, 2);
-            $table->text('warranty');
-            $table->string('availability');
+            $table->decimal('retail_price', 12, 2);
+            $table->decimal('warranty')->nullable();
+            $table->boolean('availability')->default(false);
             $table->timestamps();
             $table->unsignedBigInteger('category_id');
             $table->foreign('category_id')->references('id')->on('product_categories')->onDelete('cascade');

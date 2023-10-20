@@ -3,6 +3,7 @@
 namespace App\Imports;
 
 use App\Events\ImportProgressUpdated;
+use App\Models\Manufacturer;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Rubric;
@@ -102,20 +103,49 @@ class ProductsImport implements ToCollection, WithChunkReading, ShouldQueue
                 $this->skippedRows++;
                 continue;
             }
-            $validator = Validator::make([
-                'retail_price' => $row[7]
-            ], [
-                'retail_price' => 'numeric'
-            ]);
+            // Check if the warranty is a number or null
+            $warranty = is_numeric($row[8]) ? $row[8] : null;
 
-            if ($validator->fails()) {
+            // Check if the availability is true or false based on the text
+            $availability = strtolower($row[9]);
+            if ($availability === 'есть в наличие') {
+                $availability = true;
+            } elseif ($availability === 'нет') {
+                $availability = false;
+            } else {
+                // Invalid availability text, skip the row
                 $this->skippedRows++;
                 continue;
+            }
+            $manufacturerName = $row[3] ?? $row[4] ?? $row[5]; // Use the shorter of row 3 and row 4
+            $manufacturerName = trim($manufacturerName); // Remove leading/trailing spaces
+            if (strlen($manufacturerName) > 10) {
+                $this->skippedRows++;
+                continue;
+            }
+            $numericValue = $row[7];
+
+// Check if the value is numeric and has less than 7 digits
+            if (!is_numeric($numericValue) || strlen($numericValue) >= 7) {
+                // If the value in $row[7] doesn't meet the criteria, check neighboring columns
+                $leftNeighbor = $row[6]; // Value to the left
+                $rightNeighbor = $row[8]; // Value to the right
+
+                // Check if the left neighbor is numeric and has less than 7 digits
+                if (is_numeric($leftNeighbor) && strlen($leftNeighbor) <= 7) {
+                    $numericValue = $leftNeighbor;
+                } elseif (is_numeric($rightNeighbor) && strlen($rightNeighbor) <= 7) {
+                    $numericValue = $rightNeighbor;
+                } else {
+                    // If neither neighbor meets the criteria, skip the row
+                    $this->skippedRows++;
+                    continue;
+                }
             }
             $rubric = $rubrics[$row[0]] ?? Rubric::firstOrCreate(['name' => $row[0]]);
             $subrubric = $subrubrics[$row[1]] ?? Subrubric::firstOrCreate(['name' => $row[1], 'rubric_id' => $rubric->id]);
             $productCategory = $productCategories[$row[2]] ?? ProductCategory::firstOrCreate(['name' => $row[2], 'rubric_id' => $rubric->id]);
-
+            $manufacturer = Manufacturer::firstOrCreate(['name' => $manufacturerName]);
             if (isset($existingProducts[$row[5]])) {
                 $this->skippedRows++;
                 continue; // Skip if product already exists
@@ -123,13 +153,13 @@ class ProductsImport implements ToCollection, WithChunkReading, ShouldQueue
 
             $productsToInsert[] = [
                 'category_id' => $productCategory->id,
-                'manufacturer' => $row[3],
+                'manufacturer_id' => $manufacturer->id,
                 'product_name' => $row[4],
                 'model_code' => $row[5],
                 'product_description' => $row[6],
-                'retail_price' => $row[7],
-                'warranty' => $row[8],
-                'availability' => $row[9],
+                'retail_price' => $numericValue,
+                'warranty' => $warranty,
+                'availability' => $availability,
             ];
         }
 
